@@ -1,0 +1,797 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "omsWorkspaceName": {
+            "type": "string",
+            "metadata": {
+                "description": "Name for the Log Analytic Workspace"
+            }
+        },
+        "omsWorkspaceRegion": {
+            "type": "string",
+            "defaultValue": "East US",
+            "allowedValues": [
+                "East US",
+                "West Europe",
+                "Southeast Asia",
+                "Australia Southeast"
+            ],
+            "metadata": {
+                "description": "Specify the region for your Workspace"
+            }
+        },
+        "omsServiceTier": {
+            "type": "string",
+            "allowedValues": [
+                "Free",
+                "Standalone",
+                "PerNode"
+            ],
+            "defaultValue": "PerNode",
+            "metadata": {
+                "description": "Service Tier: Free, Standalone, or PerNode"
+            }
+        },
+        "omsPerfCounterInterval": {
+            "type": "string",
+            "defaultValue": "60",
+            "metadata": {
+                "description": "Performance counter reporting interval (in seconds)"
+            }
+        },
+        "applicationDiagnosticsStorageAccountName": {
+            "type": "string",
+            "metadata": {
+                "description": "Storage Account name for OMS to monitor"
+            }
+        }
+    },
+    "variables": {
+        "logAnalyticsApiVersion": "2015-11-01-preview",
+        "solutions": [
+            {
+                "name": "[concat('AgentHealthAssessment', '(', parameters('omsWorkspaceName'), ')')]",
+                "marketplaceName": "AgentHealthAssessment"
+            },
+            {
+                "name": "[concat('ServiceFabric', '(', parameters('omsWorkspaceName'), ')')]",
+                "marketplaceName": "ServiceFabric"
+            }
+        ],
+        "queries": [
+            {
+                "name": "D Drive Free Space",
+                "displayName": "D Drive Free Space (%)",
+                "category": "Service Fabric",
+                "query": "Perf | where ( ObjectName == 'LogicalDisk' ) | where ( InstanceName == 'D:' ) | where ( CounterName == '% Free Space' ) | where TimeGenerated < ago(10minutes) | summarize FreeSpace_DDisk_Percent = avg(CounterValue) by Computer",
+                "schedule": {
+                    "interval": 15,
+                    "timeSpan": 60
+                }
+            }
+        ],
+        "perfCounters": [
+            {
+                "name": "DiskAvgWritePerfCounter",
+                "objectName": "LogicalDisk",
+                "counterName": "Avg Disk sec/Write"
+            },
+            {
+                "name": "DiskAvgReadPerfCounter",
+                "objectName": "LogicalDisk",
+                "counterName": "Avg Disk sec/Read"
+            },
+            {
+                "name": "DiskCurrentQueueLengthPerfCounter",
+                "objectName": "LogicalDisk",
+                "counterName": "Current Disk Queue Length"
+            },
+            {
+                "name": "DiskReadsSecPerfCounter",
+                "objectName": "LogicalDisk",
+                "counterName": "Disk Reads/sec"
+            },
+            {
+                "name": "DiskTransSecPerfCounter",
+                "objectName": "LogicalDisk",
+                "counterName": "Disk Transfers/sec"
+            },
+            {
+                "name": "DiskWriteSecPerfCounter",
+                "objectName": "LogicalDisk",
+                "counterName": "Disk Writes/sec"
+            },
+            {
+                "name": "DiskFreeMegabytesPerfCounter",
+                "objectName": "LogicalDisk",
+                "counterName": "Free Megabytes"
+            },
+            {
+                "name": "DiskPctFreeSpacePerfCounter",
+                "objectName": "LogicalDisk",
+                "counterName": "% Free Space"
+            },
+            {
+                "name": "MemoryAvailableMBytesPerfCounter",
+                "objectName": "Memory",
+                "counterName": "Available MBytes"
+            },
+            {
+                "name": "MemoryPageFaultsPerSecPerfCounter",
+                "objectName": "Memory",
+                "counterName": "Page Faults/sec"
+            },
+            {
+                "name": "MemoryPageReadsPerSecPerfCounter",
+                "objectName": "Memory",
+                "counterName": "Page Reads/sec"
+            },
+            {
+                "name": "MemoryPctCommittedPerfCounter",
+                "objectName": "Memory",
+                "counterName": "% Committed Bytes In Use"
+            },
+            {
+                "name": "NetworkBytesReceivedSecPerfCounter",
+                "objectName": "Network Adapter",
+                "counterName": "Bytes Received/sec"
+            },
+            {
+                "name": "NetworkBytesSentSecPerfCounter",
+                "objectName": "Network Adapter",
+                "counterName": "Bytes Sent/sec"
+            },
+            {
+                "name": "NetworkBytesTotalSecPerfCounter",
+                "objectName": "Network Interface",
+                "counterName": "Bytes Total/sec"
+            },
+            {
+                "name": "ProcessorPctTotalTimePerfCounter",
+                "objectName": "Processor",
+                "counterName": "% Processor Time"
+            },
+            {
+                "name": "SystemProcessorQueueLengthPerfCounter",
+                "objectName": "System",
+                "counterName": "Processor Queue Length"
+            },
+            {
+                "name": "ServiceFabricAverageCommitLatencyPerTransaction",
+                "objectName": "Service Fabric Transactional Replicator",
+                "counterName": "Avg. Transaction ms/Commit"
+            },
+            {
+                "name": "ServiceFabricVirtualMemoryUsedReplicationQueue",
+                "objectName": "Service Fabric Replicator",
+                "counterName": "# Bytes Replication Queue"
+            }
+        ]
+    },
+    "resources": [
+        {
+            "apiVersion": "[variables('logAnalyticsApiVersion')]",
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "name": "[parameters('omsWorkspaceName')]",
+            "location": "[parameters('omsWorkspaceRegion')]",
+            "comments": "Log Analytics Workspace",
+            "properties": {
+                "sku": {
+                    "name": "[parameters('omsServiceTier')]"
+                }
+            },
+            "resources": [
+                {
+                    "apiVersion": "[variables('logAnalyticsApiVersion')]",
+                    "name": "AzureActivityLog",
+                    "type": "datasources",
+                    "dependsOn": [
+                        "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'))]"
+                    ],
+                    "kind": "AzureActivityLog",
+                    "properties": {
+                        "linkedResourceId": "[concat(subscription().id, '/providers/Microsoft.Insights/eventTypes/management')]"
+                    }
+                },
+                {
+                    "apiVersion": "[variables('logAnalyticsApiVersion')]",
+                    "type": "datasources",
+                    "name": "System",
+                    "dependsOn": [
+                        "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'))]"
+                    ],
+                    "kind": "WindowsEvent",
+                    "properties": {
+                        "eventLogName": "System",
+                        "eventTypes": [
+                            {
+                                "eventType": "Error"
+                            },
+                            {
+                                "eventType": "Warning"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "apiVersion": "[variables('logAnalyticsApiVersion')]",
+                    "type": "datasources",
+                    "name": "Application",
+                    "dependsOn": [
+                        "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'))]"
+                    ],
+                    "kind": "WindowsEvent",
+                    "properties": {
+                        "eventLogName": "Application",
+                        "eventTypes": [
+                            {
+                                "eventType": "Error"
+                            },
+                            {
+                                "eventType": "Warning"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "apiVersion": "[variables('logAnalyticsApiVersion')]",
+                    "name": "ApplicationDiagnosticsStorage",
+                    "type": "storageinsightconfigs",
+                    "dependsOn": [
+                        "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspacename'))]"
+                    ],
+                    "properties": {
+                        "containers": [],
+                        "tables": [
+                            "WADPerformanceCountersTable",
+                            "WADServiceFabric*EventTable",
+                            "WADMyServiceEventTable"
+                        ],
+                        "storageAccount": {
+                            "id": "[resourceId('Microsoft.Storage/storageaccounts/', parameters('applicationDiagnosticsStorageAccountName'))]",
+                            "key": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('applicationDiagnosticsStorageAccountName')),'2015-06-15').key1]"
+                        }
+                    }
+                },
+                {
+                    "apiVersion": "[variables('logAnalyticsApiVersion')]",
+                    "name": "Node Metrics",
+                    "type": "views",
+                    "dependson": [
+                        "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'))]"
+                    ],
+                    "properties": {
+                        "Id": "Node Metrics",
+                        "Name": "Node Metrics",
+                        "Author": "japoon@microsoft.com",
+                        "Source": "Local",
+                        "Version": 2,
+                        "Dashboard": [
+                            {
+                                "Id": "LineChartCalloutStackedBuilderBlade",
+                                "Type": "Blade",
+                                "Version": 0,
+                                "Configuration": {
+                                    "General": {
+                                        "title": "CPU/Memory",
+                                        "newGroup": false
+                                    },
+                                    "charts": [
+                                        {
+                                            "Header": {
+                                                "Title": "CPU (%)",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "Perf | where CounterName == \"% Processor Time\" and InstanceName == \"_Total\" | summarize AvgCPUPercent = avg(CounterValue) by Computer, bin(TimeGenerated, 5m) | render timechart",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "Memory Used (%)",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "Perf | where ObjectName == \"Memory\" and (CounterName == \"% Used Memory\" or CounterName == \"% Committed Bytes In Use\") | summarize AvgUsedMemory = avg(CounterValue) by Computer, bin(TimeGenerated, 5m) | render timechart ",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "Memory Available (MBytes)",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "Perf | where ( ObjectName == \"Memory\" ) | where ( CounterName == \"Available MBytes\" ) | summarize AvgMemoryAvailableMBytes = avg(CounterValue) by Computer, bin(TimeGenerated, 5m) | render timechart ",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "Id": "LineChartCalloutStackedBuilderBlade",
+                                "Type": "Blade",
+                                "Version": 0,
+                                "Configuration": {
+                                    "General": {
+                                        "title": "Page Faults",
+                                        "newGroup": false
+                                    },
+                                    "charts": [
+                                        {
+                                            "Header": {
+                                                "Title": "Page Faults (per sec)",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "Perf | where ObjectName == \"Memory\" and (CounterName == \"Page Faults/sec\") | summarize PageFaultsPerSec = avg(CounterValue) by Computer, bin(TimeGenerated, 5m) | render timechart",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "Page Reads (per sec)",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "Perf | where ObjectName == \"Memory\" | where ( CounterName == \"Page Reads/sec\" ) | summarize AvgPageReadsPerSec = avg(CounterValue) by Computer, bin(TimeGenerated, 5m) | render timechart",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "Id": "LineChartCalloutStackedBuilderBlade",
+                                "Type": "Blade",
+                                "Version": 0,
+                                "Configuration": {
+                                    "General": {
+                                        "title": "Disk",
+                                        "newGroup": false
+                                    },
+                                    "charts": [
+                                        {
+                                            "Header": {
+                                                "Title": "Free Space on D: (%)",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "Perf | where ( ObjectName == \"LogicalDisk\" ) | where ( CounterName == \"% Free Space\" or CounterName == \"D:\" ) | summarize AvgFreeSpace = avg(CounterValue) by Computer, bin(TimeGenerated, 5m) | render timechart",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "Free Space on D (MB)",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "Perf  | where ( ObjectName == \"LogicalDisk\" ) | where ( CounterName == \"Free Megabytes\" ) | where ( InstanceName == \"D:\" ) | summarize AvgFreeDiskMBytes = avg(CounterValue) by Computer, bin(TimeGenerated, 5m) | render timechart ",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "Id": "LineChartCalloutStackedBuilderBlade",
+                                "Type": "Blade",
+                                "Version": 0,
+                                "Configuration": {
+                                    "General": {
+                                        "title": "Service Fabric",
+                                        "newGroup": false
+                                    },
+                                    "charts": [
+                                        {
+                                            "Header": {
+                                                "Title": "# Bytes Replication Queue",
+                                                "Subtitle": "Size of virtual memory occupied by the Replication Queue"
+                                            },
+                                            "LineChart": {
+                                                "Query": "Perf | where ( ObjectName == \"Service Fabric Replicator\" ) | where CounterName == \"# Bytes Replication Queue\" | summarize VirtualMemoryInBytesReplicationQueue = avg(CounterValue) by Computer, bin(TimeGenerated, 5m) | render timechart",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "Average Commit Latency per Transaction",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "Perf | where ( ObjectName == \"Service Fabric Transactional Replicator\" ) | where CounterName == \"Avg. Transaction ms/Commit\"  | summarize AvgCommitLatency = avg(CounterValue) by Computer, bin(TimeGenerated, 5m) | render timechart",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        "Filters": [],
+                        "OverviewTile": {
+                            "Id": "LineChartBuilderTile",
+                            "Type": "OverviewTile",
+                            "Version": 2,
+                            "Configuration": {
+                                "LineChart": {
+                                    "Query": "Perf | where CounterName == \"% Processor Time\" and InstanceName == \"_Total\" | summarize AvgCPUPercent = avg(CounterValue) by Computer, bin(TimeGenerated, 30m)",
+                                    "yAxis": {
+                                        "isLogarithmic": false,
+                                        "units": {
+                                            "baseUnitType": "",
+                                            "baseUnit": "",
+                                            "displayUnit": ""
+                                        },
+                                        "customLabel": ""
+                                    }
+                                },
+                                "Advanced": {
+                                    "DataFlowVerification": {
+                                        "Enabled": false,
+                                        "Query": "search * | limit 1 | project TimeGenerated",
+                                        "Message": ""
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "apiVersion": "[variables('logAnalyticsApiVersion')]",
+                    "name": "Data",
+                    "type": "views",
+                    "dependson": [
+                        "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'))]"
+                    ],
+                    "properties": {
+                        "Id": "Data",
+                        "Name": "Data",
+                        "Author": "japoon@microsoft.com",
+                        "Source": "Local",
+                        "Version": 2,
+                        "Dashboard": [
+                            {
+                                "Id": "LineChartCalloutStackedBuilderBlade",
+                                "Type": "Blade",
+                                "Version": 0,
+                                "Configuration": {
+                                    "General": {
+                                        "title": "Data type distribution",
+                                        "newGroup": false
+                                    },
+                                    "charts": [
+                                        {
+                                            "Header": {
+                                                "Title": "Data types over time",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "search * | summarize AggregatedValue = count() by Type",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "Data from Computers over time",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "search * | summarize AggregatedValue = count() by Computer",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        },
+                                        {
+                                            "Header": {
+                                                "Title": "Data from Sources over time",
+                                                "Subtitle": ""
+                                            },
+                                            "LineChart": {
+                                                "Query": "search * | summarize AggregatedValue = count() by SourceSystem",
+                                                "yAxis": {
+                                                    "isLogarithmic": false,
+                                                    "units": {
+                                                        "baseUnitType": "",
+                                                        "baseUnit": "",
+                                                        "displayUnit": ""
+                                                    },
+                                                    "customLabel": ""
+                                                },
+                                                "NavigationSelect": {}
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        "Filters": [],
+                        "OverviewTile": {
+                            "Id": "SingleQueryDonutBuilderTileV1",
+                            "Type": "OverviewTile",
+                            "Version": 2,
+                            "Configuration": {
+                                "Donut": {
+                                    "Query": "search * | summarize AggregatedValue = count() by Type  | order by AggregatedValue desc",
+                                    "CenterLegend": {
+                                        "Text": "Total",
+                                        "Operation": "Sum",
+                                        "ArcsToSelect": []
+                                    },
+                                    "Options": {
+                                        "colors": [
+                                            "#00188f",
+                                            "#0072c6",
+                                            "#00bcf2"
+                                        ],
+                                        "valueColorMapping": [],
+                                        "legend": true,
+                                        "skipLegendPositioning": true,
+                                        "center": true,
+                                        "unitType": "Count",
+                                        "fromUnit": "Ones"
+                                    },
+                                    "HideOtherLegend": true
+                                },
+                                "Advanced": {
+                                    "DataFlowVerification": {
+                                        "Enabled": false,
+                                        "Query": "search * | limit 1 | project TimeGenerated",
+                                        "Message": ""
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "apiVersion": "2017-03-03-preview",
+            "type": "Microsoft.OperationalInsights/workspaces/savedSearches",
+            "name": "[concat(parameters('omsWorkspaceName'), '/', variables('queries')[copyIndex()].Name)]",
+            "dependsOn": [
+                "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'))]"
+            ],
+            "copy": {
+                "name": "queryCopy",
+                "count": "[length(variables('queries'))]"
+            },
+            "properties": {
+                "etag": "*",
+                "query": "[variables('queries')[copyIndex()].query]",
+                "displayName": "[variables('queries')[copyIndex()].displayName]",
+                "category": "[variables('queries')[copyIndex()].category]"
+            }
+        },
+        {
+            "apiVersion": "[variables('logAnalyticsApiVersion')]",
+            "type": "Microsoft.OperationalInsights/workspaces/savedSearches/schedules",
+            "name": "[concat(parameters('omsWorkspaceName'), '/', variables('queries')[copyIndex()].Name, '/schedule')]",
+            "condition": "[not(empty(string(variables('queries')[copyIndex()].schedule.interval)))]",
+            "dependsOn": [
+                "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'))]",
+                "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'), '/savedSearches/', variables('queries')[copyIndex()].Name)]"
+            ],
+            "copy": {
+                "name": "queryCopy",
+                "count": "[length(variables('queries'))]"
+            },
+            "properties": {
+                "etag": "*",
+                "interval": "[variables('queries')[copyIndex()].schedule.interval]",
+                "queryTimeSpan": "[variables('queries')[copyIndex()].schedule.timeSpan]",
+                "enabled": true
+            }
+        },
+        {
+            "apiVersion": "[variables('logAnalyticsApiVersion')]",
+            "name": "[concat(parameters('omsWorkspaceName'), '/', variables('perfCounters')[copyIndex()].Name)]",
+            "type": "Microsoft.OperationalInsights/workspaces/dataSources",
+            "dependsOn": [
+                "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'))]"
+            ],
+            "kind": "WindowsPerformanceCounter",
+            "copy": {
+                "name": "perfCountersCopy",
+                "count": "[length(variables('perfCounters'))]"
+            },
+            "properties": {
+                "objectName": "[variables('perfCounters')[copyIndex()].ObjectName]",
+                "instanceName": "*",
+                "intervalSeconds": "[parameters('omsPerfCounterInterval')]",
+                "counterName": "[variables('perfCounters')[copyIndex()].CounterName]"
+            }
+        },
+        {
+            "apiVersion": "[variables('logAnalyticsApiVersion')]",
+            "type": "Microsoft.OperationsManagement/solutions",
+            "name": "[concat(variables('solutions')[copyIndex()].Name)]",
+            "location": "[parameters('omsWorkspaceRegion')]",
+            "dependsOn": [
+                "[concat('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspaceName'))]"
+            ],
+            "copy": {
+                "name": "solutionCopy",
+                "count": "[length(variables('solutions'))]"
+            },
+            "properties": {
+                "workspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('omsWorkspaceName'))]"
+            },
+            "plan": {
+                "name": "[variables('solutions')[copyIndex()].name]",
+                "product": "[concat('OMSGallery/', variables('solutions')[copyIndex()].marketplaceName)]",
+                "promotionCode": "",
+                "publisher": "Microsoft"
+            }
+        }
+    ],
+    "outputs": {
+        "omsWorkspaceId": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspacename')), '2015-11-01-preview').customerId]"
+        },
+        "omsWorkspaceKey": {
+            "type": "string",
+            "value": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces/', parameters('omsWorkspacename')), '2015-11-01-preview').primarySharedKey]"
+        }
+    }
+}
