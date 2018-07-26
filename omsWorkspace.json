@@ -28,7 +28,7 @@
                 "Standalone",
                 "PerNode"
             ],
-            "defaultValue": "PerNode",
+            "defaultValue": "Free",
             "metadata": {
                 "description": "Service Tier: Free, Standalone, or PerNode"
             }
@@ -171,7 +171,7 @@
     },
     "resources": [
         {
-            "apiVersion": "[variables('logAnalyticsApiVersion')]",
+            "apiVersion": "2015-03-20",
             "type": "Microsoft.OperationalInsights/workspaces",
             "name": "[parameters('omsWorkspaceName')]",
             "location": "[parameters('omsWorkspaceRegion')]",
@@ -183,7 +183,7 @@
             },
             "resources": [
                 {
-                    "apiVersion": "[variables('logAnalyticsApiVersion')]",
+                    "apiVersion": "2015-11-01-preview",
                     "name": "AzureActivityLog",
                     "type": "datasources",
                     "dependsOn": [
