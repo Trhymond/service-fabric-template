@@ -171,7 +171,7 @@
     },
     "resources": [
         {
-            "apiVersion": "2015-03-20",
+            "apiVersion": "2017-03-15-preview",
             "type": "Microsoft.OperationalInsights/workspaces",
             "name": "[parameters('omsWorkspaceName')]",
             "location": "[parameters('omsWorkspaceRegion')]",
